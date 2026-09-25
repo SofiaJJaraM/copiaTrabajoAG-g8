@@ -252,6 +252,7 @@ function renderAuth(state) {
     reviewCard.hidden = false;
     feedCard.hidden = false;
     feed.load();
+    subscribeToPushNotifications();
   } else {
     restaurantsCard.hidden = true;
     restaurants.reset();
@@ -287,6 +288,49 @@ const reviewForm = createReviewFormController({
   onCreated: () => feed.load(),
 });
 auth = createAuthController({ api, onStateChange: renderAuth });
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function subscribeToPushNotifications() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.warn('Permiso de notificaciones denegado.');
+      return;
+    }
+
+    const publicVapidKey = 'BKOIblx-_5qcdxQWaqQlkxLi69S6-XltFBNIkYHQuqVC9HBBM33sZ0QoYk0sPDAB3gM_SsWxaHDsQ9Hr3XPcV6c'; 
+    const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: convertedVapidKey
+    });
+
+    const response = await fetch('/api/v1/subscriptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription)
+    });
+
+    if (response.ok) {
+      console.log('Suscripción Web Push exitosa.');
+    }
+  } catch (error) {
+    console.error('Error en la suscripción:', error);
+  }
+}
 
 async function checkApi() {
   checkApiButton.disabled = true;

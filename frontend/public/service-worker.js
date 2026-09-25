@@ -1,4 +1,4 @@
-const CACHE_VERSION = "namii-shell-v11";
+const CACHE_VERSION = "namii-shell-v12";
 const PRECACHE = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -49,5 +49,42 @@ self.addEventListener("fetch", (event) => {
         return response;
       });
     }),
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    data = event.data.json();
+  }
+
+  const title = data.title || "¡Nueva reseña!";
+  const options = {
+    body: data.body || "Alguien publicó una nueva reseña de un plato.",
+    data: {
+      url: data.url || "/" 
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data.url || "/";
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then((windowClients) => {
+      for (let client of windowClients) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
   );
 });
