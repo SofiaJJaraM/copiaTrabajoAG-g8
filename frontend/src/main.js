@@ -252,13 +252,28 @@ function renderAuth(state) {
     reviewCard.hidden = false;
     feedCard.hidden = false;
     feed.load();
-    subscribeToPushNotifications();
+
+    if (pushSubscribeBtn && pushStatus) {
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          pushStatus.textContent = "Suscripción activa.";
+          pushSubscribeBtn.hidden = true;
+        } else {
+          pushStatus.textContent = "No estás suscrito.";
+          pushSubscribeBtn.hidden = false;
+        }
+      });
+    }
   } else {
     restaurantsCard.hidden = true;
     restaurants.reset();
     reviewCard.hidden = true;
     reviewForm.reset();
     feed.reset();
+    
+    if (pushSubscribeBtn) pushSubscribeBtn.hidden = true;
+    if (pushStatus) pushStatus.textContent = "";
 
     if (state.status === AUTH_STATES.ANONYMOUS) {
       feedCard.hidden = true;
@@ -300,17 +315,41 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-async function subscribeToPushNotifications() {
+const pushSubscribeBtn = document.querySelector("#push-subscribe-btn");
+const pushStatus = document.querySelector("#push-status");
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function handlePushSubscription() {
   try {
-    const registration = await navigator.serviceWorker.ready;
+    pushSubscribeBtn.disabled = true;
     
-    const permission = await Notification.requestPermission();
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      permission = await Notification.requestPermission();
+    }
+
     if (permission !== 'granted') {
-      console.warn('Permiso de notificaciones denegado.');
+      pushStatus.textContent = "Permiso denegado por el usuario.";
       return;
     }
 
-    const publicVapidKey = 'BKOIblx-_5qcdxQWaqQlkxLi69S6-XltFBNIkYHQuqVC9HBBM33sZ0QoYk0sPDAB3gM_SsWxaHDsQ9Hr3XPcV6c'; 
+    const registration = await navigator.serviceWorker.ready;
+
+    const vapidResponse = await fetch('/api/v1/push/vapid-public-key');
+    if (!vapidResponse.ok) throw new Error("No se pudo obtener la clave VAPID");
+    
+    const vapidData = await vapidResponse.json();
+    const publicVapidKey = vapidData.public_key || vapidData; 
     const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
 
     const subscription = await registration.pushManager.subscribe({
@@ -318,18 +357,28 @@ async function subscribeToPushNotifications() {
       applicationServerKey: convertedVapidKey
     });
 
-    const response = await fetch('/api/v1/subscriptions', {
+    const subResponse = await fetch('/api/v1/push/subscriptions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription)
     });
 
-    if (response.ok) {
-      console.log('Suscripción Web Push exitosa.');
+    if (subResponse.ok) {
+      pushStatus.textContent = "Suscripción activa.";
+      pushSubscribeBtn.hidden = true;
+    } else {
+      throw new Error("Error al guardar en el backend");
     }
   } catch (error) {
-    console.error('Error en la suscripción:', error);
+    console.error('Error en el flujo Push:', error);
+    pushStatus.textContent = "Error al intentar suscribir.";
+  } finally {
+    pushSubscribeBtn.disabled = false;
   }
+}
+
+if (pushSubscribeBtn) {
+  pushSubscribeBtn.addEventListener("click", handlePushSubscription);
 }
 
 async function checkApi() {
@@ -363,7 +412,22 @@ reviewFormElement.addEventListener("submit", (event) => {
   reviewForm.submit(formData).catch(() => {});
 });
 
-logoutButton.addEventListener("click", () => auth.logout());
+logoutButton.addEventListener("click", async () => {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    
+    if (subscription) {
+      await fetch('/api/v1/push/subscriptions', { method: 'DELETE' });
+      await subscription.unsubscribe();
+    }
+  } catch (error) {
+    console.error("Error al desuscribir durante el cierre de sesión:", error);
+  }
+  
+  auth.logout();
+});
+
 retrySessionButton.addEventListener("click", () => auth.restoreSession());
 retryRestaurantsButton.addEventListener("click", () => restaurants.load());
 retryFeedButton.addEventListener("click", () => feed.load());
