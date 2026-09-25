@@ -1,0 +1,42 @@
+[project]
+name = "foodie-backend"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "alembic>=1.14,<2",
+  "argon2-cffi>=23.1,<24",
+  "boto3>=1.35,<2",
+  "email-validator>=2.2,<3",
+  "fastapi>=0.115,<1",
+  "mangum>=0.19,<1",
+  "pillow>=11,<13",
+  "psycopg[binary]>=3.2,<4",
+  "python-multipart>=0.0.20,<1",
+  "pywebpush>=2,<3",
+  "PyJWT>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn[standard]>=0.34,<1",
+]
+[project.optional-dependencies]
+aws = [
+  "aurora-dsql-python-connector[psycopg]>=0.2.7,<1",
+  "aurora-dsql-sqlalchemy>=1.1,<2",
+]
+[dependency-groups]
+dev = ["httpx2>=2,<3", "pytest>=8.3,<9", "ruff>=0.9,<1"]
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+include = ["app*"]
+[tool.setuptools.package-data]
+"app.db" = ["assets/reviews/*.webp"]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+  "integration: requires a PostgreSQL database configured through TEST_DATABASE_URL",
+]
+[tool.ruff]
+line-length = 100

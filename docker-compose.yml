@@ -1,0 +1,90 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: foodie
+      POSTGRES_USER: foodie
+      POSTGRES_PASSWORD: foodie
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foodie -d foodie"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://foodie:foodie@db:5432/foodie
+      JWT_SECRET: ${JWT_SECRET:-development-only-change-me-change-me}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      SEED_DEMO_DATA: "true"
+      MEDIA_STORAGE_BACKEND: ${MEDIA_STORAGE_BACKEND:-local}
+      MEDIA_LOCAL_PATH: /data/media
+      MEDIA_MAX_UPLOAD_BYTES: ${MEDIA_MAX_UPLOAD_BYTES:-10485760}
+      MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-}
+      MEDIA_S3_REGION: ${MEDIA_S3_REGION:-}
+      MEDIA_S3_PREFIX: ${MEDIA_S3_PREFIX:-foodie}
+      MEDIA_PRESIGNED_URL_EXPIRATION_SECONDS: ${MEDIA_PRESIGNED_URL_EXPIRATION_SECONDS:-300}
+      VAPID_PRIVATE_KEY_PATH: ${VAPID_PRIVATE_KEY_PATH:-/run/secrets/vapid/private_key.pem}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:namii@example.com}
+    ports: ["8000:8000"]
+    volumes:
+      - media-data:/data/media
+      - ./backend/secrets:/run/secrets/vapid:ro
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+  gateway:
+    build: ./gateway
+    depends_on:
+      - backend
+      - frontend
+    environment:
+      LOCAL_TLS: ${LOCAL_TLS:-false}
+    ports:
+      - "${GATEWAY_HTTP_PORT:-5173}:80"
+      - "${GATEWAY_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./certs:/certs:ro
+  test-db:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: foodie_test
+      POSTGRES_USER: foodie
+      POSTGRES_PASSWORD: foodie
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foodie -d foodie_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend-tests:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    depends_on:
+      test-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://foodie:foodie@test-db:5432/foodie_test
+      TEST_DATABASE_URL: postgresql+psycopg://foodie:foodie@test-db:5432/foodie_test
+      JWT_SECRET: test-only-secret-do-not-use-in-production
+      SEED_DEMO_DATA: "true"
+      MEDIA_STORAGE_BACKEND: local
+      MEDIA_LOCAL_PATH: /tmp/foodie-test-media
+    entrypoint: ["/bin/sh", "/app/test-entrypoint.sh"]
+volumes:
+  postgres-data:
+  frontend-node-modules:
+  media-data:
