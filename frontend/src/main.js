@@ -6,7 +6,13 @@ import {
   RESTAURANT_STATES,
   createRestaurantsController,
 } from "./restaurants.js";
+import { FEED_STATES, createFeedController } from "./feed.js";
+import { REVIEW_FORM_STATES, createReviewFormController } from "./reviewForm.js";
+import { saveFeedSnapshot, loadFeedSnapshot, clearFeedSnapshot } from "./offlineFeed.js";
+import { registerServiceWorker } from "./pwa.js";
+import { createConnectivityController } from "./connectivity.js";
 
+const connectivityStatus = document.querySelector("#connectivity-status");
 const apiStatus = document.querySelector("#api-status");
 const checkApiButton = document.querySelector("#check-api");
 const authCard = document.querySelector("#auth-card");
@@ -36,9 +42,30 @@ const restaurantPanels = {
   [RESTAURANT_STATES.EMPTY]: document.querySelector("#restaurants-empty"),
   [RESTAURANT_STATES.ERROR]: document.querySelector("#restaurants-error"),
 };
+const reviewCard = document.querySelector("#review-card");
+const reviewFormElement = document.querySelector("#review-form");
+const reviewFieldset = document.querySelector("#review-fieldset");
+const reviewStatus = document.querySelector("#review-status");
+const reviewRestaurantSelect = document.querySelector("#review-restaurant");
+const reviewDetailCard = document.querySelector("#review-detail-card");
+const reviewDetailContent = document.querySelector("#review-detail-content");
+const reviewDetailStatus = document.querySelector("#review-detail-status");
+const backToFeedButton = document.querySelector("#back-to-feed");
+const feedCard = document.querySelector("#feed-card");
+const feedStatus = document.querySelector("#feed-status");
+const feedList = document.querySelector("#feed-list");
+const retryFeedButton = document.querySelector("#retry-feed");
+const feedPanels = {
+  [FEED_STATES.LOADING]: document.querySelector("#feed-loading"),
+  [FEED_STATES.READY]: document.querySelector("#feed-ready"),
+  [FEED_STATES.EMPTY]: document.querySelector("#feed-empty"),
+  [FEED_STATES.ERROR]: document.querySelector("#feed-error"),
+};
 const currentOrigin = document.querySelector("#current-origin");
+const apiCard = document.querySelector("#api-card");
 
 const api = createApiClient();
+let isOnline = navigator.onLine;
 
 currentOrigin.textContent = window.location.origin;
 
@@ -82,6 +109,137 @@ function createRestaurantItem(restaurant) {
   return item;
 }
 
+function formatOccurredAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function createReviewArticle(review, occurredAt) {
+  const article = document.createElement("article");
+
+  const meta = document.createElement("p");
+  meta.className = "feed-meta";
+  meta.textContent = `${review.author.handle} · ${review.restaurant.name}`;
+
+  const dish = document.createElement("h3");
+  dish.textContent = review.dish_name;
+
+  const photo = document.createElement("img");
+  photo.src = review.photo.content_url;
+  photo.alt = `Foto de ${review.dish_name}`;
+  photo.loading = "lazy";
+  photo.className = "feed-photo";
+
+  const text = document.createElement("p");
+  text.textContent = review.text;
+
+  const time = document.createElement("time");
+  time.dateTime = occurredAt;
+  time.textContent = formatOccurredAt(occurredAt);
+
+  article.append(meta, dish, photo, text, time);
+  return article;
+}
+
+function createFeedItem(activity) {
+  const item = document.createElement("li");
+  item.className = "feed-item";
+  item.append(createReviewArticle(activity.review, activity.occurred_at));
+  return item;
+}
+
+const REVIEW_PATH_PATTERN = /^\/reviews\/([^/]+)\/?$/;
+
+function getReviewIdFromPath() {
+  const match = window.location.pathname.match(REVIEW_PATH_PATTERN);
+  return match ? match[1] : null;
+}
+
+async function showReviewDetail(reviewId) {
+  apiCard.hidden = true;
+  authCard.hidden = true;
+  restaurantsCard.hidden = true;
+  reviewCard.hidden = true;
+  feedCard.hidden = true;
+  reviewDetailCard.hidden = false;
+  reviewDetailContent.replaceChildren();
+  showStatus(reviewDetailStatus, "Cargando reseña…");
+
+  try {
+    const review = await api.getReview(reviewId);
+    reviewDetailContent.replaceChildren(createReviewArticle(review, review.created_at));
+    showStatus(reviewDetailStatus, "", "neutral");
+  } catch (error) {
+    showStatus(reviewDetailStatus, "No fue posible cargar esta reseña.", "error");
+  }
+}
+
+function closeReviewDetail() {
+  window.history.pushState(null, "", "/");
+  reviewDetailCard.hidden = true;
+  apiCard.hidden = false;
+  authCard.hidden = false;
+  restaurantsCard.hidden = false;
+  reviewCard.hidden = false;
+  feedCard.hidden = false;
+}
+
+backToFeedButton.addEventListener("click", closeReviewDetail);
+
+function renderFeed(state) {
+  feedCard.dataset.state = state.status;
+  feedCard.setAttribute("aria-busy", String(state.status === FEED_STATES.LOADING));
+  for (const [name, panel] of Object.entries(feedPanels)) {
+    panel.hidden = name !== state.status;
+  }
+
+  showStatus(feedStatus, state.message, state.kind);
+  retryFeedButton.disabled = state.status === FEED_STATES.LOADING;
+  feedList.replaceChildren();
+
+  if (state.status === FEED_STATES.READY) {
+    feedList.append(...state.items.map(createFeedItem));
+  }
+
+  if (
+    (state.status === FEED_STATES.READY || state.status === FEED_STATES.EMPTY) &&
+    auth.state.status === AUTH_STATES.AUTHENTICATED
+  ) {
+    saveFeedSnapshot({
+      userId: auth.state.session.user.id,
+      items: state.items ?? [],
+    });
+  }
+}
+
+async function showOfflineFeed() {
+  const snapshot = await loadFeedSnapshot();
+  if (!snapshot) {
+    feedCard.hidden = true;
+    return;
+  }
+
+  feedCard.hidden = false;
+  feedCard.dataset.state = "offline";
+  feedCard.setAttribute("aria-busy", "false");
+  for (const panel of Object.values(feedPanels)) {
+    panel.hidden = true;
+  }
+  feedPanels[FEED_STATES.READY].hidden = false;
+  feedList.replaceChildren(...snapshot.items.map(createFeedItem));
+  showStatus(
+    feedStatus,
+    `Sin conexión: mostrando tu copia guardada (actualizada ${formatOccurredAt(snapshot.updatedAt)}). Podría estar desactualizada.`,
+    "error",
+  );
+}
+
 function renderRestaurants(state) {
   restaurantsCard.dataset.state = state.status;
   restaurantsCard.setAttribute(
@@ -98,6 +256,23 @@ function renderRestaurants(state) {
 
   if (state.status === RESTAURANT_STATES.READY) {
     restaurantsList.append(...state.items.map(createRestaurantItem));
+    reviewRestaurantSelect.replaceChildren(
+      ...state.items.map((restaurant) => {
+        const option = document.createElement("option");
+        option.value = restaurant.id;
+        option.textContent = restaurant.name;
+        return option;
+      }),
+    );
+  }
+}
+
+function renderReviewForm(state) {
+  showStatus(reviewStatus, state.message, state.kind);
+  reviewFieldset.disabled = !isOnline || state.status === REVIEW_FORM_STATES.SUBMITTING;
+
+  if (state.status === REVIEW_FORM_STATES.SUCCESS) {
+    reviewFormElement.reset();
   }
 }
 
@@ -109,9 +284,7 @@ function renderAuth(state) {
   }
 
   showStatus(authStatus, state.message, state.kind);
-  loginButton.disabled = state.status === AUTH_STATES.LOADING;
-  logoutButton.disabled = state.status === AUTH_STATES.LOADING;
-  retrySessionButton.disabled = state.status === AUTH_STATES.LOADING;
+  updateAuthAvailability(state.status);
 
   if (state.status === AUTH_STATES.AUTHENTICATED) {
     sessionName.textContent = state.session.user.name;
@@ -121,11 +294,51 @@ function renderAuth(state) {
     sessionExpiration.textContent = formatExpiration(state.session.expires_at);
     restaurantsCard.hidden = false;
     restaurants.load();
+    reviewCard.hidden = false;
+    feedCard.hidden = false;
+    feed.load();
+
+    const deepLinkReviewId = getReviewIdFromPath();
+    if (deepLinkReviewId) {
+      showReviewDetail(deepLinkReviewId);
+    }
+
+    if (pushSubscribeBtn && pushStatus) {
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          pushStatus.textContent = "Suscripción activa.";
+          pushSubscribeBtn.hidden = true;
+        } else {
+          pushStatus.textContent = "No estás suscrito.";
+          pushSubscribeBtn.hidden = false;
+        }
+      });
+    }
   } else {
     restaurantsCard.hidden = true;
     restaurants.reset();
+    reviewCard.hidden = true;
+    reviewForm.reset();
+    feed.reset();
+    reviewDetailCard.hidden = true;
+
+    if (pushSubscribeBtn) pushSubscribeBtn.hidden = true;
+    if (pushStatus) pushStatus.textContent = "";
+
+    if (state.status === AUTH_STATES.ANONYMOUS) {
+      feedCard.hidden = true;
+      clearFeedSnapshot();
+    } else if (state.status === AUTH_STATES.UNAVAILABLE) {
+      showOfflineFeed();
+    } else {
+      feedCard.hidden = true;
+    }
   }
 }
+
+const pushSubscribeBtn = document.querySelector("#push-subscribe-btn");
+const pushStatus = document.querySelector("#push-status");
 
 let auth;
 const restaurants = createRestaurantsController({
@@ -133,7 +346,69 @@ const restaurants = createRestaurantsController({
   onStateChange: renderRestaurants,
   onUnauthorized: () => auth.invalidateSession(),
 });
+const feed = createFeedController({
+  api,
+  onStateChange: renderFeed,
+  onUnauthorized: () => auth.invalidateSession(),
+});
+const reviewForm = createReviewFormController({
+  api,
+  onStateChange: renderReviewForm,
+  onCreated: () => feed.load(),
+});
 auth = createAuthController({ api, onStateChange: renderAuth });
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function handlePushSubscription() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    pushSubscribeBtn.disabled = true;
+
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== 'granted') {
+      console.warn('Permiso de notificaciones denegado.');
+      pushStatus.textContent = "Permiso denegado por el usuario.";
+      return;
+    }
+
+    const vapidData = await api.getVapidPublicKey();
+    const publicVapidKey = vapidData.public_key || vapidData; 
+    const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: convertedVapidKey
+    });
+
+    await api.savePushSubscription(subscription.toJSON());
+
+    pushStatus.textContent = "Suscripción activa.";
+    pushSubscribeBtn.hidden = true;
+
+  } catch (error) {
+    console.error('Error en el flujo Push:', error);
+    pushStatus.textContent = "Error al intentar suscribir.";
+  } finally {
+    pushSubscribeBtn.disabled = false;
+  }
+}
+
+if (pushSubscribeBtn) {
+  pushSubscribeBtn.addEventListener("click", handlePushSubscription);
+}
 
 async function checkApi() {
   checkApiButton.disabled = true;
@@ -160,10 +435,57 @@ loginForm.addEventListener("submit", async (event) => {
   }
 });
 
-logoutButton.addEventListener("click", () => auth.logout());
+reviewFormElement.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const formData = new FormData(reviewFormElement);
+  reviewForm.submit(formData).catch(() => {});
+});
+
+logoutButton.addEventListener("click", async () => {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    
+    if (subscription) {
+      await api.deletePushSubscription(subscription.endpoint);
+      await subscription.unsubscribe();
+    }
+  } catch (error) {
+    console.error("Error al desuscribir durante el cierre de sesión:", error);
+  }
+  
+  auth.logout();
+});
+
 retrySessionButton.addEventListener("click", () => auth.restoreSession());
 retryRestaurantsButton.addEventListener("click", () => restaurants.load());
+retryFeedButton.addEventListener("click", () => feed.load());
 checkApiButton.addEventListener("click", checkApi);
+
+function updateAuthAvailability(status) {
+  const busy = status === AUTH_STATES.LOADING;
+  loginButton.disabled = busy || !isOnline;
+  logoutButton.disabled = busy || !isOnline;
+  retrySessionButton.disabled = busy || !isOnline;
+
+  if (!isOnline && status === AUTH_STATES.ANONYMOUS) {
+    showStatus(authStatus, "Sin conexión: no es posible iniciar sesión.", "error");
+  }
+}
+
+function renderConnectivity(online) {
+  isOnline = online;
+  connectivityStatus.textContent = online
+    ? "En línea"
+    : "Sin conexión: el contenido podría estar desactualizado";
+  connectivityStatus.dataset.kind = online ? "success" : "error";
+  updateAuthAvailability(auth.state.status);
+  reviewFieldset.disabled = !isOnline || reviewForm.state.status === REVIEW_FORM_STATES.SUBMITTING;
+}
+
+createConnectivityController({ onChange: renderConnectivity });
+window.addEventListener("online", () => auth.restoreSession());
 
 checkApi();
 auth.restoreSession();
+registerServiceWorker();

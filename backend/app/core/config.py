@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     media_s3_region: str | None = None
     media_s3_prefix: str = "foodie"
     media_presigned_url_expiration_seconds: int = Field(default=300, ge=1, le=3600)
+    vapid_private_key_path: Path | None = None
+    vapid_public_key: str | None = None
+    vapid_subject: str = "mailto:namii@example.com"
     model_config = SettingsConfigDict(extra="ignore")
 
     @field_validator("media_s3_bucket", "media_s3_region", mode="before")

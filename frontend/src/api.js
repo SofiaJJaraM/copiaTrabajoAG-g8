@@ -73,11 +73,19 @@ export function createApiClient(fetchImplementation = globalThis.fetch) {
     return payload;
   }
 
-  return Object.freeze({
+return Object.freeze({
     health: () => request("/healthz"),
     session: () => request("/api/v1/auth/session"),
     restaurants: ({ limit = 20, offset = 0, signal } = {}) =>
       request(`/api/v1/restaurants?limit=${limit}&offset=${offset}`, { signal }),
+    feed: ({ limit = 20, cursor, signal } = {}) => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor) {
+        params.set("cursor", cursor);
+      }
+      return request(`/api/v1/feed?${params}`, { signal });
+    },
+    getReview: (id, { signal } = {}) => request(`/api/v1/reviews/${id}`, { signal }),
     login: (credentials) =>
       request("/api/v1/auth/login", {
         method: "POST",
@@ -85,5 +93,24 @@ export function createApiClient(fetchImplementation = globalThis.fetch) {
         body: JSON.stringify(credentials),
       }),
     logout: () => request("/api/v1/auth/logout", { method: "POST" }),
+    createReview: (formData, { signal } = {}) =>
+      request("/api/v1/reviews", { method: "POST", body: formData, signal }),
+    
+    getVapidPublicKey: ({ signal } = {}) => 
+      request("/api/v1/push/vapid-public-key", { signal }),
+    savePushSubscription: (subscription, { signal } = {}) =>
+      request("/api/v1/push/subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription),
+        signal,
+      }),
+    deletePushSubscription: (endpoint, { signal } = {}) =>
+      request("/api/v1/push/subscriptions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint }),
+        signal,
+      }),
   });
 }

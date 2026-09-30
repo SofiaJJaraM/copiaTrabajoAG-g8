@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Ñamii",
+  "short_name": "Ñamii",
+  "description": "Red social gastronómica: descubre restaurantes, registra tus visitas y comparte reseñas.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "es-CL",
+  "theme_color": "#285b3b",
+  "background_color": "#f3f5ef",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

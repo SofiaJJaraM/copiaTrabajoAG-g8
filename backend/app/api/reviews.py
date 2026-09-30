@@ -12,6 +12,7 @@ from app.media.storage import (
     get_media_storage,
 )
 from app.schemas.reviews import ReviewResponse
+from app.services import push as push_service
 from app.services import reviews as review_service
 from app.services.auth import AuthenticatedSession
 
@@ -83,6 +84,7 @@ def create(
     ) as error:
         _raise_http_error(error)
     response.headers["Location"] = f"/api/v1/reviews/{review.id}"
+    push_service.notify_new_review(review=review, exclude_user_id=session.user_id)
     return review
 
 

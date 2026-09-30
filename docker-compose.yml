@@ -30,9 +30,13 @@ services:
       MEDIA_S3_REGION: ${MEDIA_S3_REGION:-}
       MEDIA_S3_PREFIX: ${MEDIA_S3_PREFIX:-foodie}
       MEDIA_PRESIGNED_URL_EXPIRATION_SECONDS: ${MEDIA_PRESIGNED_URL_EXPIRATION_SECONDS:-300}
+      VAPID_PRIVATE_KEY_PATH: ${VAPID_PRIVATE_KEY_PATH:-/run/secrets/vapid/private_key.pem}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:namii@example.com}
     ports: ["8000:8000"]
     volumes:
       - media-data:/data/media
+      - ./backend/secrets:/run/secrets/vapid:ro
   frontend:
     build: ./frontend
     environment:

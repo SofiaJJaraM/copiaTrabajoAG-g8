@@ -168,3 +168,19 @@ Index(
     reviews.c.created_at,
     reviews.c.id,
 )
+
+push_subscriptions = Table(
+    "push_subscriptions",
+    metadata,
+    Column("id", Uuid(as_uuid=True), primary_key=True),
+    # Aurora DSQL no soporta foreign keys; la relación se valida en la app.
+    Column("user_id", Uuid(as_uuid=True), nullable=False),
+    Column("endpoint", String(1024), nullable=False),
+    Column("p256dh", String(255), nullable=False),
+    Column("auth", String(255), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+Index("uq_push_subscriptions_endpoint", push_subscriptions.c.endpoint, unique=True)
+Index("ix_push_subscriptions_user_id", push_subscriptions.c.user_id)

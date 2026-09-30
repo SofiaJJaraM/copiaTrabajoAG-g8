@@ -3,8 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Punto de partida del frontend Foodie" />
-    <title>Foodie · Sesión y restaurantes</title>
+    <meta name="description" content="Ñamii: descubre restaurantes, registra tus visitas y comparte reseñas." />
+    <meta name="theme-color" content="#285b3b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/icon-512.png" />
+    <title>Ñamii · Sesión y restaurantes</title>
   </head>
   <body>
     <main class="shell">
@@ -16,9 +21,15 @@
           conexión, el ciclo de sesión y una colección protegida antes de
           comenzar a construir la PWA.
         </p>
+        <p
+          id="connectivity-status"
+          class="status"
+          role="status"
+          aria-live="polite"
+        ></p>
       </header>
 
-      <section class="card" aria-labelledby="connection-title">
+      <section id="api-card" class="card" aria-labelledby="connection-title">
         <div>
           <p class="step">Paso 1</p>
           <h2 id="connection-title">Estado de la API</h2>
@@ -104,6 +115,10 @@
               <dd><time id="session-expiration"></time></dd>
             </div>
           </dl>
+          <div id="push-ui-container" style="margin-top: 1rem; margin-bottom: 1rem; padding: 1rem; border: 1px solid #ccc;">
+            <p>Estado de notificaciones: <strong id="push-status">Verificando...</strong></p>
+            <button id="push-subscribe-btn" type="button" hidden>Habilitar notificaciones</button>
+          </div>
           <button id="logout" type="button">Cerrar sesión</button>
         </div>
 
@@ -123,6 +138,123 @@
           aria-atomic="true"
         >
           Comprobando si existe una sesión vigente…
+        </p>
+      </section>
+
+      <section
+        id="review-card"
+        class="card"
+        aria-labelledby="review-title"
+        hidden
+      >
+        <div>
+          <p class="step">Nueva reseña</p>
+          <h2 id="review-title">Publicar una reseña</h2>
+          <p>Sube la foto de un plato y cuenta tu experiencia.</p>
+        </div>
+
+        <form id="review-form">
+          <fieldset id="review-fieldset">
+            <label for="review-restaurant">Restaurante</label>
+            <select id="review-restaurant" name="restaurant_id" required></select>
+
+            <label for="review-dish-name">Plato</label>
+            <input id="review-dish-name" name="dish_name" type="text" maxlength="120" required />
+
+            <label for="review-text">Reseña</label>
+            <textarea id="review-text" name="text" maxlength="2000" required></textarea>
+
+            <label for="review-photo">Foto del plato</label>
+            <input
+              id="review-photo"
+              name="photo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              required
+            />
+
+            <button type="submit">Publicar reseña</button>
+          </fieldset>
+        </form>
+
+        <p
+          id="review-status"
+          class="status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          Completa el formulario para publicar una reseña.
+        </p>
+      </section>
+
+      <section
+        id="review-detail-card"
+        class="card"
+        aria-labelledby="review-detail-title"
+        hidden
+      >
+        <div>
+          <p class="step">Reseña</p>
+          <h2 id="review-detail-title">Reseña seleccionada</h2>
+        </div>
+
+        <div id="review-detail-content"></div>
+
+        <p
+          id="review-detail-status"
+          class="status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        ></p>
+
+        <button id="back-to-feed" type="button">Volver al feed</button>
+      </section>
+
+      <section
+        id="feed-card"
+        class="card"
+        aria-labelledby="feed-title"
+        aria-busy="false"
+        hidden
+      >
+        <div>
+          <p class="step">Feed</p>
+          <h2 id="feed-title">Actividad reciente</h2>
+          <p>
+            Reseñas públicas recientes de las personas y restaurantes que
+            sigues.
+          </p>
+        </div>
+
+        <div id="feed-loading" class="feed-panel" hidden>
+          <p>Espera mientras se consulta la primera página.</p>
+        </div>
+
+        <div id="feed-ready" class="feed-panel" hidden>
+          <ul id="feed-list" class="feed-list"></ul>
+        </div>
+
+        <div id="feed-empty" class="feed-panel" hidden>
+          <p>Todavía no hay actividad en tu feed.</p>
+        </div>
+
+        <div id="feed-error" class="feed-panel" hidden>
+          <p>
+            La sesión sigue vigente, pero no fue posible obtener el feed.
+          </p>
+          <button id="retry-feed" type="button">Volver a intentar</button>
+        </div>
+
+        <p
+          id="feed-status"
+          class="status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          El feed se mostrará después de verificar la sesión.
         </p>
       </section>
 
